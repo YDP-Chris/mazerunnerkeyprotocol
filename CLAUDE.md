@@ -232,9 +232,9 @@ Target: 2-8 players. Optimal: 4 players.
 | Phase | Scope | Exit Criteria |
 |-------|-------|--------------|
 | **Phase 0: Setup** ✅ | GitHub, Unity 6.3, Unity MCP, Claude Code connected | Claude can read/write Unity scripts live |
-| **Phase 1: Core Loop** | Player controller. Static maze with key + exit. Enemy AI (5-state machine). Loot boxes with 50-attempt guard. Win condition. | One player completes a full match locally |
-| **Phase 2: Maze Generation** | Procedural maze. Key/exit/spawn placement pipeline. NavMesh bake. | Each session has a unique maze |
-| **Phase 3: Multiplayer Foundation** | NGO integrated. Player movement synced. Host/client architecture. | Two players move in same maze |
+| **Phase 1: Core Loop** ✅ | Player controller. Static maze with key + exit. Enemy AI (5-state machine). Loot boxes with 50-attempt guard. Win condition. | One player completes a full match locally |
+| **Phase 2: Maze Generation** ✅ | Procedural maze. Key/exit/spawn placement pipeline. NavMesh bake. | Each session has a unique maze |
+| **Phase 3: Multiplayer Foundation** ✅ | NGO integrated. Player movement synced. Host/client architecture. | Two players move in same maze |
 | **Phase 4: Full Multiplayer** | Key, exit, health, enemies, loot all synced. Win condition networked. | Full match with 2-4 players online |
 | **Phase 5: Polish** | Unity Relay, lobby, UI, sound, balance tuning | Shareable build for external playtesting |
 
@@ -243,12 +243,40 @@ Target: 2-8 players. Optimal: 4 players.
 ## 9. Current Session Priorities
 > Update this section at the start of each working session.
 
-**Current phase: Phase 0 → Phase 1 transition**
+**Current phase: Phase 3 ✅ → Phase 4**
 
 - [x] Unity 6.3 URP project created
 - [x] Unity MCP connected (IvanMurzak — confirmed working)
-- [ ] First commit pushed to GitHub
-- [ ] Begin Phase 1: player controller, static maze, key + exit placement, win condition
+- [x] Phase 1: player controller, static maze, key + exit, enemy AI, loot boxes, win condition
+- [x] Phase 2: procedural maze generation with seed sync
+- [x] Phase 3: multiplayer foundation — lobby, movement sync, combat sync, dev tools
+- [ ] Phase 4: full multiplayer — sync key, exit, health, enemies, loot, win condition
+
+---
+
+## 10. Architecture Notes & Lessons Learned
+
+### 10.1 Critical Architecture Decisions
+- **OwnerNetworkTransform** (not NetworkTransform) on Player prefab — default NetworkTransform is server-authoritative and overrides CharacterController.Move() on non-host clients. OwnerNetworkTransform returns `false` from `OnIsServerAuthoritative()`.
+- **ConnectionManager is MonoBehaviour** (not NetworkBehaviour) — lives on NetworkManager GO which is never a spawned NetworkObject, so IsServer/IsClient would always be false.
+- **CharacterController for movement** (not Rigidbody) — non-owners disable CharacterController so OwnerNetworkTransform drives their position.
+- **Keyboard.current fallback** in PlayerMovement — Unity Editor Game view doesn't reliably forward keyboard events to InputActions when running as a client. Direct `Keyboard.current` reads work.
+- **New Input System only** — project uses Input System package exclusively. Never use `UnityEngine.Input` (old API) — it throws `InvalidOperationException`.
+
+### 10.2 Multiplayer Sync Patterns
+| What | Pattern | Notes |
+|------|---------|-------|
+| Player position | OwnerNetworkTransform | Owner-authoritative, position XYZ + rotation Y |
+| Player health | NetworkVariable<int> (server-write) | Host validates all damage |
+| Damage dealing | ServerRpc (DealDamageServerRpc) | Client raycasts locally, sends target ID + damage to host |
+| Sound events | ServerRpc (BroadcastFootstep/GunshotServerRpc) | Client sounds forwarded to host for enemy AI perception |
+| Key state | NetworkVariable + ServerRpc | KeyManager on host controls pickup/drop |
+| Maze seed | NetworkVariable<int> | Server picks seed, clients build same maze |
+| Player list | CustomMessagingManager named messages | Not NetworkList (ConnectionManager is MonoBehaviour) |
+
+### 10.3 Dev Tools
+- **DebugMinimap** (Tab to toggle) — auto-creates via RuntimeInitializeOnLoadMethod, shows maze layout + player dots + exit marker
+- **Floating health bars** — auto-created on remote players above nameplate, color-coded by health %
 
 ---
 

@@ -142,6 +142,8 @@ public class PlayerCombat : NetworkBehaviour
         // Broadcast gunshot sound for enemy AI
         if (IsServer)
             SoundEventSystem.BroadcastSound(transform.position, 20f, SoundType.Gunshot);
+        else
+            BroadcastGunshotServerRpc(transform.position);
 
         // Hitscan
         Camera cam = Camera.main;
@@ -217,6 +219,12 @@ public class PlayerCombat : NetworkBehaviour
         Vector3 randomDir = Quaternion.AngleAxis(randomAngle,
             Quaternion.AngleAxis(randomRotation, direction) * Vector3.up) * direction;
         return randomDir.normalized;
+    }
+
+    [ServerRpc]
+    private void BroadcastGunshotServerRpc(Vector3 position)
+    {
+        SoundEventSystem.BroadcastSound(position, 20f, SoundType.Gunshot);
     }
 
     [ServerRpc]

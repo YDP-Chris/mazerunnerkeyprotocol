@@ -914,8 +914,8 @@ GameObject:
   - component: {fileID: 2267919663164847498}
   - component: {fileID: 2424179609699587093}
   - component: {fileID: 164395088570418900}
-  - component: {fileID: 4967691954437315839}
   - component: {fileID: 2970324696721136906}
+  - component: {fileID: 5231365381061069099}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -1226,7 +1226,7 @@ MonoBehaviour:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: -1
---- !u!114 &4967691954437315839
+--- !u!114 &2970324696721136906
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1235,9 +1235,25 @@ MonoBehaviour:
   m_GameObject: {fileID: 6089875261458355235}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e96cb6065543e43c4a752faaa1468eb1, type: 3}
+  m_Script: {fileID: 11500000, guid: 295e4aac3d88a854a8310227a1e2bfe4, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.Components.NetworkTransform
+  m_EditorClassIdentifier: GameAssembly::RemotePlayerVisuals
+  ShowTopMostFoldoutHeaderGroup: 1
+  bodyRenderer: {fileID: 8688472856893608727}
+  nameplateCanvas: {fileID: 3719961457195606661}
+  nameplateText: {fileID: 8381018684413404964}
+--- !u!114 &5231365381061069099
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6089875261458355235}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c440d8c294e4784e8914496b07d916d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: GameAssembly::OwnerNetworkTransform
   ShowTopMostFoldoutHeaderGroup: 1
   NetworkTransformExpanded: 0
   AutoOwnerAuthorityTickOffset: 1
@@ -1272,22 +1288,6 @@ MonoBehaviour:
   SwitchTransformSpaceWhenParented: 0
   Interpolate: 1
   SlerpPosition: 0
---- !u!114 &2970324696721136906
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6089875261458355235}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 295e4aac3d88a854a8310227a1e2bfe4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: GameAssembly::RemotePlayerVisuals
-  ShowTopMostFoldoutHeaderGroup: 1
-  bodyRenderer: {fileID: 8688472856893608727}
-  nameplateCanvas: {fileID: 3719961457195606661}
-  nameplateText: {fileID: 8381018684413404964}
 --- !u!1 &6659560235095490195
 GameObject:
   m_ObjectHideFlags: 0

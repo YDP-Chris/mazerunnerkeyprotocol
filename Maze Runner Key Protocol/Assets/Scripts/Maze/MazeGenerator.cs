@@ -47,6 +47,7 @@ public class MazeGenerator : NetworkBehaviour
         -1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     // Maze grid (delegated to MazeGrid)
+    public MazeGrid Grid => grid;
     private MazeGrid grid;
     private bool[,] horizontalWalls; // alias for grid.HorizontalWalls
     private bool[,] verticalWalls;   // alias for grid.VerticalWalls

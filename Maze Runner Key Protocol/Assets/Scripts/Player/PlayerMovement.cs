@@ -39,7 +39,6 @@ public class PlayerMovement : NetworkBehaviour
         controller = GetComponent<CharacterController>();
         inputActions = new PlayerInputActions();
         inputActions.Player.Enable();
-        cameraTransform = Camera.main.transform;
 
         var health = GetComponent<PlayerHealth>();
         if (health != null)
@@ -58,12 +57,60 @@ public class PlayerMovement : NetworkBehaviour
             health.OnDied -= OnDied;
     }
 
+    private float debugTimer;
+
     private void Update()
     {
-        if (!IsOwner || isEliminated || inputActions == null || cameraTransform == null) return;
+        if (!IsOwner || isEliminated || inputActions == null) return;
 
-        Vector2 moveInput = inputActions.Player.Move.ReadValue<Vector2>();
-        bool sprintPressed = inputActions.Player.Sprint.IsPressed();
+        // Lazily find camera — may not be available at spawn time on clients
+        if (cameraTransform == null)
+        {
+            if (Camera.main != null)
+                cameraTransform = Camera.main.transform;
+            else
+            {
+                debugTimer += Time.deltaTime;
+                if (debugTimer >= 2f)
+                {
+                    debugTimer = 0f;
+                    Debug.LogWarning("[PlayerMovement] Camera.main is NULL — cannot move");
+                }
+                return;
+            }
+        }
+
+        // Read movement: try Keyboard.current first (most reliable in editor),
+        // then fall back to Input Actions
+        var kb = UnityEngine.InputSystem.Keyboard.current;
+        Vector2 moveInput = Vector2.zero;
+        bool sprintPressed = false;
+
+        if (kb != null)
+        {
+            float x = 0f, y = 0f;
+            if (kb.wKey.isPressed) y += 1f;
+            if (kb.sKey.isPressed) y -= 1f;
+            if (kb.aKey.isPressed) x -= 1f;
+            if (kb.dKey.isPressed) x += 1f;
+            moveInput = new Vector2(x, y);
+            sprintPressed = kb.leftShiftKey.isPressed;
+        }
+
+        if (moveInput == Vector2.zero && inputActions != null)
+        {
+            moveInput = inputActions.Player.Move.ReadValue<Vector2>();
+            sprintPressed = inputActions.Player.Sprint.IsPressed();
+        }
+
+        // Debug: log input state periodically
+        debugTimer += Time.deltaTime;
+        if (debugTimer >= 2f)
+        {
+            debugTimer = 0f;
+            bool wPressed = kb != null && kb.wKey.isPressed;
+            Debug.Log($"[PlayerMovement] moveInput={moveInput} kb.w={wPressed} kb={kb != null} controller={controller.enabled} pos={transform.position}");
+        }
 
         // Camera-relative movement direction
         Vector3 forward = cameraTransform.forward;
@@ -111,16 +158,25 @@ public class PlayerMovement : NetworkBehaviour
         else
             CurrentState = MovementState.Idle;
 
-        // Broadcast footstep sounds for enemy AI (host-side)
-        if (IsServer && moveDirection.sqrMagnitude > 0.01f)
+        // Broadcast footstep sounds for enemy AI
+        if (moveDirection.sqrMagnitude > 0.01f)
         {
             footstepTimer += Time.deltaTime;
             if (footstepTimer >= FOOTSTEP_INTERVAL)
             {
                 footstepTimer = 0f;
-                SoundEventSystem.BroadcastSound(transform.position, FOOTSTEP_RADIUS, SoundType.Footstep);
+                if (IsServer)
+                    SoundEventSystem.BroadcastSound(transform.position, FOOTSTEP_RADIUS, SoundType.Footstep);
+                else
+                    BroadcastFootstepServerRpc(transform.position);
             }
         }
+    }
+
+    [ServerRpc]
+    private void BroadcastFootstepServerRpc(Vector3 position)
+    {
+        SoundEventSystem.BroadcastSound(position, FOOTSTEP_RADIUS, SoundType.Footstep);
     }
 
     private void OnDied()
