@@ -28,6 +28,10 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (!IsOwner)
         {
+            // Disable CharacterController on non-owner so NetworkTransform can drive position
+            var cc = GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+
             enabled = false;
             return;
         }

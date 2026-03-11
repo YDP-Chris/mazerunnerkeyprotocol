@@ -1,10 +1,20 @@
 using UnityEngine;
 using Unity.Netcode;
 
+/// <summary>
+/// Dev bypass: automatically starts a host session for quick single-player testing.
+/// Enable "Auto Host" in the inspector to skip the lobby flow.
+/// When disabled, the lobby/connection flow in MainMenu scene is used instead.
+/// </summary>
 public class AutoStartHost : MonoBehaviour
 {
+    [Tooltip("Enable for quick single-player testing without the lobby")]
+    [SerializeField] private bool autoHost = true;
+
     private void Start()
     {
+        if (!autoHost) return;
+
         var nm = NetworkManager.Singleton;
         if (nm == null || nm.IsClient || nm.IsServer) return;
 
@@ -12,7 +22,7 @@ public class AutoStartHost : MonoBehaviour
         nm.NetworkConfig.ConnectionApproval = true;
         nm.ConnectionApprovalCallback = OnConnectionApproval;
 
-        Debug.Log("[AutoStartHost] Starting host...");
+        Debug.Log("[AutoStartHost] Dev bypass — starting host...");
         nm.StartHost();
     }
 
