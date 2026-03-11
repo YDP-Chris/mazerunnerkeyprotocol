@@ -5,23 +5,21 @@ using System.Collections;
 
 public class PlayerCombat : NetworkBehaviour
 {
-    [Header("Weapon Settings")]
-    [SerializeField] private int damage = 15;
-    [SerializeField] private float fireRate = 0.3f;
-    [SerializeField] private float range = 50f;
-    [SerializeField] private LayerMask damageableMask;
-
     [Header("References")]
+    [SerializeField] private LayerMask damageableMask;
     [SerializeField] private Transform muzzlePoint;
     [SerializeField] private GameObject muzzleFlashObject;
     [SerializeField] private GameObject hitImpactPrefab;
     [SerializeField] private GameObject wallImpactPrefab;
     [SerializeField] private AudioClip fireSound;
+    [SerializeField] private AudioClip emptySound;
 
     private PlayerInputActions inputActions;
     private AudioSource audioSource;
+    private WeaponInventory inventory;
     private float nextFireTime;
     private bool isEliminated;
+    private bool fireHeld;
 
     public override void OnNetworkSpawn()
     {
@@ -34,6 +32,7 @@ public class PlayerCombat : NetworkBehaviour
         inputActions = new PlayerInputActions();
         inputActions.Player.Enable();
         audioSource = GetComponent<AudioSource>();
+        inventory = GetComponent<WeaponInventory>();
 
         if (muzzleFlashObject != null)
             muzzleFlashObject.SetActive(false);
@@ -52,22 +51,91 @@ public class PlayerCombat : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsOwner || isEliminated || inputActions == null) return;
+        if (!IsOwner || isEliminated || inputActions == null || inventory == null) return;
 
-        if (inputActions.Player.Fire.WasPressedThisFrame() && Time.time >= nextFireTime)
+        // Weapon switching
+        HandleWeaponSwitching();
+
+        // Firing
+        var weapon = inventory.GetEquippedWeapon();
+        if (weapon == null) return;
+
+        bool firePressed = inputActions.Player.Fire.WasPressedThisFrame();
+        bool fireHeldNow = inputActions.Player.Fire.IsPressed();
+
+        if (weapon.fireMode == FireMode.Single)
         {
-            nextFireTime = Time.time + fireRate;
-            Fire();
+            if (firePressed && Time.time >= nextFireTime)
+            {
+                if (TryFire(weapon))
+                    nextFireTime = Time.time + (1f / weapon.fireRate);
+            }
+        }
+        else // Automatic
+        {
+            if (fireHeldNow && Time.time >= nextFireTime)
+            {
+                if (TryFire(weapon))
+                    nextFireTime = Time.time + (1f / weapon.fireRate);
+            }
         }
     }
 
-    private void Fire()
+    private void HandleWeaponSwitching()
     {
-        // Muzzle flash
+        if (inputActions.Player.Weapon1.WasPressedThisFrame())
+        {
+            inventory.SwitchToSlot(0);
+            nextFireTime = 0f; // Reset cooldown on switch
+        }
+        else if (inputActions.Player.Weapon2.WasPressedThisFrame())
+        {
+            inventory.SwitchToSlot(1);
+            nextFireTime = 0f;
+        }
+        else if (inputActions.Player.Weapon3.WasPressedThisFrame())
+        {
+            inventory.SwitchToSlot(2);
+            nextFireTime = 0f;
+        }
+
+        // Scroll wheel
+        float scroll = inputActions.Player.ScrollWeapon.ReadValue<float>();
+        if (scroll > 0.1f)
+        {
+            inventory.CycleWeapon(1);
+            nextFireTime = 0f;
+        }
+        else if (scroll < -0.1f)
+        {
+            inventory.CycleWeapon(-1);
+            nextFireTime = 0f;
+        }
+    }
+
+    private bool TryFire(WeaponData weapon)
+    {
+        int slot = inventory.equippedSlot.Value;
+
+        // Ammo check (skip for pistol slot 0)
+        if (slot != 0)
+        {
+            if (inventory.GetEquippedAmmo() <= 0)
+            {
+                // Empty weapon cue
+                if (audioSource != null && emptySound != null)
+                    audioSource.PlayOneShot(emptySound);
+                return false;
+            }
+        }
+
+        // Consume ammo
+        if (slot != 0)
+            inventory.ConsumeAmmo();
+
+        // Visual/audio feedback
         if (muzzleFlashObject != null)
             StartCoroutine(ShowMuzzleFlash());
-
-        // Audio
         if (audioSource != null && fireSound != null)
             audioSource.PlayOneShot(fireSound);
 
@@ -75,39 +143,80 @@ public class PlayerCombat : NetworkBehaviour
         if (IsServer)
             SoundEventSystem.BroadcastSound(transform.position, 20f, SoundType.Gunshot);
 
-        // Hitscan from camera center
+        // Hitscan
         Camera cam = Camera.main;
-        if (cam == null) return;
+        if (cam == null) return true;
 
+        if (weapon.pelletCount > 1)
+            FireMultiRay(cam, weapon);
+        else
+            FireSingleRay(cam, weapon);
+
+        return true;
+    }
+
+    private void FireSingleRay(Camera cam, WeaponData weapon)
+    {
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
 
-        if (Physics.Raycast(ray, out RaycastHit hit, range))
+        // Apply spread
+        if (weapon.spreadAngle > 0f)
+            ray.direction = ApplySpread(ray.direction, weapon.spreadAngle);
+
+        ProcessRaycast(ray, weapon);
+    }
+
+    private void FireMultiRay(Camera cam, WeaponData weapon)
+    {
+        Ray baseRay = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+
+        for (int i = 0; i < weapon.pelletCount; i++)
         {
-            // Check if we hit a damageable target
+            Ray pelletRay = baseRay;
+            pelletRay.direction = ApplySpread(baseRay.direction, weapon.spreadAngle);
+            ProcessRaycast(pelletRay, weapon);
+        }
+    }
+
+    private void ProcessRaycast(Ray ray, WeaponData weapon)
+    {
+        if (Physics.Raycast(ray, out RaycastHit hit, weapon.effectiveRange))
+        {
             if (((1 << hit.collider.gameObject.layer) & damageableMask) != 0)
             {
                 var targetNetObj = hit.collider.GetComponentInParent<NetworkObject>();
                 if (targetNetObj != null)
                 {
-                    // Check for player or enemy health
                     bool hasDamageable = targetNetObj.GetComponent<PlayerHealth>() != null
                         || targetNetObj.GetComponent<EnemyHealth>() != null;
 
                     if (hasDamageable)
-                        DealDamageServerRpc(targetNetObj.NetworkObjectId, damage);
+                        DealDamageServerRpc(targetNetObj.NetworkObjectId, Mathf.RoundToInt(weapon.damage));
                 }
 
-                // Hit impact on damageable
                 if (hitImpactPrefab != null)
                     SpawnImpact(hitImpactPrefab, hit.point, hit.normal);
             }
             else
             {
-                // Wall/environment impact
                 if (wallImpactPrefab != null)
                     SpawnImpact(wallImpactPrefab, hit.point, hit.normal);
             }
         }
+    }
+
+    private Vector3 ApplySpread(Vector3 direction, float spreadAngle)
+    {
+        float halfAngle = spreadAngle * 0.5f;
+        float randomAngle = Random.Range(-halfAngle, halfAngle);
+        float randomRotation = Random.Range(0f, 360f);
+
+        Quaternion spreadRotation = Quaternion.AngleAxis(randomAngle, Vector3.up) *
+                                     Quaternion.AngleAxis(randomRotation, direction);
+        // Proper cone spread
+        Vector3 randomDir = Quaternion.AngleAxis(randomAngle,
+            Quaternion.AngleAxis(randomRotation, direction) * Vector3.up) * direction;
+        return randomDir.normalized;
     }
 
     [ServerRpc]

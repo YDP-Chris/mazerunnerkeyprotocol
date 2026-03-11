@@ -840,6 +840,7 @@ GameObject:
   - component: {fileID: 8680373494636242916}
   - component: {fileID: 2267919663164847498}
   - component: {fileID: 2424179609699587093}
+  - component: {fileID: 164395088570418900}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -904,14 +905,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 4215796874
-  InScenePlacedSourceGlobalObjectIdHash: 0
+  GlobalObjectIdHash: 650598250
+  InScenePlacedSourceGlobalObjectIdHash: 4215796874
   DeferredDespawnTick: 0
   Ownership: 1
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
   ActiveSceneSynchronization: 0
-  SceneMigrationSynchronization: 1
+  SceneMigrationSynchronization: 0
   SpawnWithObservers: 1
   DontDestroyWithOwner: 0
   AutoObjectParentSync: 1
@@ -1080,9 +1081,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCombat
   ShowTopMostFoldoutHeaderGroup: 1
-  damage: 15
-  fireRate: 0.3
-  range: 50
   damageableMask:
     serializedVersion: 2
     m_Bits: 1
@@ -1091,6 +1089,7 @@ MonoBehaviour:
   hitImpactPrefab: {fileID: 6038174011774630754, guid: 96a62e661ff7dec4c9375cc79c4fa009, type: 3}
   wallImpactPrefab: {fileID: 1678420652134412313, guid: 77a9e5ed77e47c54fbd54099e7c65f11, type: 3}
   fireSound: {fileID: 0}
+  emptySound: {fileID: 0}
 --- !u!114 &2424179609699587093
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1112,6 +1111,45 @@ MonoBehaviour:
   flashDuration: 0.3
   eliminationPanel: {fileID: 2367017928742946783}
   hudCanvas: {fileID: 626337352861720418}
+--- !u!114 &164395088570418900
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6089875261458355235}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fee0c4145fbbb4946a2a0078bd2d5000, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponInventory
+  ShowTopMostFoldoutHeaderGroup: 1
+  pistolData: {fileID: 11400000, guid: 12b8abaf205717c48979aab078594619, type: 2}
+  equippedSlot:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  syncedAmmoSlot1:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  syncedAmmoSlot2:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+  syncedWeaponSlot1:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: -1
+  syncedWeaponSlot2:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: -1
 --- !u!1 &6659560235095490195
 GameObject:
   m_ObjectHideFlags: 0

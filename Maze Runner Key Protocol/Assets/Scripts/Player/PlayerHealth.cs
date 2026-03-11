@@ -74,6 +74,11 @@ public class PlayerHealth : NetworkBehaviour
         CurrentHealth.Value = Mathf.Min(maxHealth, CurrentHealth.Value + amount);
     }
 
+    public void Heal(float amount)
+    {
+        Heal(Mathf.RoundToInt(amount));
+    }
+
     private IEnumerator DeactivateAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
