@@ -42,6 +42,10 @@ public class MazeGenerator : NetworkBehaviour
     public static event Action OnMazeReady;
     public static MazeGenerator Instance { get; private set; }
 
+    // Synced seed: server sets this, clients read it to build the same maze
+    private NetworkVariable<int> syncedSeed = new NetworkVariable<int>(
+        -1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
     // Maze grid (delegated to MazeGrid)
     private MazeGrid grid;
     private bool[,] horizontalWalls; // alias for grid.HorizontalWalls
@@ -59,12 +63,40 @@ public class MazeGenerator : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (!IsServer) return;
-        GenerateAndBuild();
+        if (IsServer)
+        {
+            // Server: pick seed, set NetworkVariable, then build
+            int usedSeed = seed >= 0 ? seed : UnityEngine.Random.Range(0, int.MaxValue);
+            syncedSeed.Value = usedSeed;
+            GenerateAndBuild(usedSeed, isServer: true);
+        }
+        else
+        {
+            // Client: read the seed and build geometry only
+            if (syncedSeed.Value >= 0)
+            {
+                GenerateAndBuild(syncedSeed.Value, isServer: false);
+            }
+            else
+            {
+                // Seed not set yet, wait for it
+                syncedSeed.OnValueChanged += OnSeedChanged;
+            }
+        }
+    }
+
+    private void OnSeedChanged(int oldVal, int newVal)
+    {
+        syncedSeed.OnValueChanged -= OnSeedChanged;
+        if (newVal >= 0)
+        {
+            GenerateAndBuild(newVal, isServer: false);
+        }
     }
 
     public override void OnNetworkDespawn()
     {
+        syncedSeed.OnValueChanged -= OnSeedChanged;
         if (Instance == this)
         {
             Instance = null;
@@ -72,14 +104,12 @@ public class MazeGenerator : NetworkBehaviour
         }
     }
 
-    public void GenerateAndBuild()
+    public void GenerateAndBuild(int usedSeed, bool isServer)
     {
         float startTime = Time.realtimeSinceStartup;
 
-        // Resolve seed
-        int usedSeed = seed >= 0 ? seed : UnityEngine.Random.Range(0, int.MaxValue);
         rng = new System.Random(usedSeed);
-        Debug.Log($"[MazeGenerator] Generating {gridWidth}x{gridHeight} maze with seed {usedSeed}");
+        Debug.Log($"[MazeGenerator] Generating {gridWidth}x{gridHeight} maze with seed {usedSeed} (isServer={isServer})");
 
         // Set static bounds
         MinX = cellSize * 0.5f;
@@ -103,24 +133,27 @@ public class MazeGenerator : NetworkBehaviour
         // 2. Create open areas
         CreateOpenAreas();
 
-        // 3. Instantiate geometry
+        // 3. Instantiate geometry (both server and client)
         PlaceFloors();
         PlaceWalls();
 
-        // 4. Place exit on maze edge
-        PlaceExit();
+        if (isServer)
+        {
+            // 4. Place exit on maze edge (server only)
+            PlaceExit();
 
-        // 4b. Move ExitGateway scene object to generated exit position
-        PositionExitGateway();
+            // 4b. Move ExitGateway scene object to generated exit position
+            PositionExitGateway();
 
-        // 5. Place player spawns in dead-ends
-        PlacePlayerSpawns();
+            // 5. Place player spawns in dead-ends
+            PlacePlayerSpawns();
 
-        // 6. Bake NavMesh
-        BakeNavMesh();
+            // 6. Bake NavMesh (server needs it for AI pathfinding)
+            BakeNavMesh();
+        }
 
         float elapsed = Time.realtimeSinceStartup - startTime;
-        Debug.Log($"[MazeGenerator] Maze ready in {elapsed:F2}s. Bounds: ({MinX},{MinZ}) to ({MaxX},{MaxZ})");
+        Debug.Log($"[MazeGenerator] Maze ready in {elapsed:F2}s. Bounds: ({MinX},{MinZ}) to ({MaxX},{MaxZ}) (isServer={isServer})");
 
         // 7. Signal ready
         IsReady = true;

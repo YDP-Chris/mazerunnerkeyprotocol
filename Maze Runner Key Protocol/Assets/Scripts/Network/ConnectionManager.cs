@@ -7,18 +7,24 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Collections;
+using System.Collections.Generic;
 
 /// <summary>
 /// Manages lobby connections, player tracking, and scene transitions for multiplayer.
 /// Lives in the MainMenu scene on the NetworkManager GameObject. Persists via DontDestroyOnLoad.
+/// Uses MonoBehaviour (not NetworkBehaviour) because it lives on the NetworkManager GameObject
+/// which is not a spawned NetworkObject.
 /// </summary>
-public class ConnectionManager : NetworkBehaviour
+public class ConnectionManager : MonoBehaviour
 {
     public const int MaxPlayers = 8;
     public const ushort DefaultPort = 7777;
-    public const float ConnectionTimeout = 5f;
+    public const float ConnectionTimeout = 15f;
 
-    public NetworkList<PlayerLobbyData> Players;
+    /// <summary>
+    /// Host-authoritative player list. On clients, synced via custom messages.
+    /// </summary>
+    public List<PlayerLobbyData> Players = new List<PlayerLobbyData>();
 
     public static ConnectionManager Instance { get; private set; }
 
@@ -37,37 +43,6 @@ public class ConnectionManager : NetworkBehaviour
             return;
         }
         Instance = this;
-        Players = new NetworkList<PlayerLobbyData>();
-    }
-
-    public override void OnNetworkSpawn()
-    {
-        Players.OnListChanged += OnPlayersListChanged;
-
-        if (IsServer)
-        {
-            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
-        }
-
-        if (IsClient && !IsServer)
-        {
-            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnectedFromHost;
-        }
-    }
-
-    public override void OnNetworkDespawn()
-    {
-        Players.OnListChanged -= OnPlayersListChanged;
-
-        if (IsServer && NetworkManager.Singleton != null)
-        {
-            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnect;
-        }
-
-        if (IsClient && !IsServer && NetworkManager.Singleton != null)
-        {
-            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnectedFromHost;
-        }
     }
 
     private void OnDestroy()
@@ -92,8 +67,13 @@ public class ConnectionManager : NetworkBehaviour
 
         nm.NetworkConfig.ConnectionApproval = true;
         nm.ConnectionApprovalCallback = OnConnectionApproval;
+        nm.NetworkConfig.ForceSamePrefabs = false;
+        nm.LogLevel = LogLevel.Normal;
 
         matchStarted = false;
+        Players.Clear();
+
+        Debug.Log($"[ConnectionManager] NetworkConfig hash: {nm.NetworkConfig.GetConfig()}");
 
         if (!nm.StartHost())
         {
@@ -102,6 +82,12 @@ public class ConnectionManager : NetworkBehaviour
             return;
         }
 
+        // Subscribe to disconnect events
+        nm.OnClientDisconnectCallback += OnClientDisconnect;
+
+        // Register custom message handler for player list sync
+        nm.CustomMessagingManager.RegisterNamedMessageHandler("PlayerListSync", OnReceivePlayerList);
+
         Debug.Log($"[ConnectionManager] Host started on port {port}");
     }
 
@@ -109,7 +95,6 @@ public class ConnectionManager : NetworkBehaviour
         NetworkManager.ConnectionApprovalRequest request,
         NetworkManager.ConnectionApprovalResponse response)
     {
-        // Reject if match already started
         if (matchStarted)
         {
             response.Approved = false;
@@ -118,7 +103,6 @@ public class ConnectionManager : NetworkBehaviour
             return;
         }
 
-        // Reject if full
         int currentCount = NetworkManager.Singleton.ConnectedClientsList.Count;
         if (currentCount >= MaxPlayers)
         {
@@ -129,17 +113,64 @@ public class ConnectionManager : NetworkBehaviour
         }
 
         response.Approved = true;
-        response.CreatePlayerObject = false; // We spawn players manually after scene load
+        response.CreatePlayerObject = false;
 
-        // Add to player list
         var data = new PlayerLobbyData
         {
             ClientId = request.ClientNetworkId,
             DisplayName = $"Player {currentCount + 1}"
         };
         Players.Add(data);
+        OnLobbyUpdated?.Invoke();
+
+        // Sync updated player list to all clients
+        StartCoroutine(SyncPlayerListNextFrame());
 
         Debug.Log($"[ConnectionManager] Approved client {request.ClientNetworkId} as {data.DisplayName}");
+    }
+
+    /// <summary>
+    /// Broadcasts the player list to all connected clients via custom named messages.
+    /// Delayed one frame so the newly connected client's messaging manager is ready.
+    /// </summary>
+    private IEnumerator SyncPlayerListNextFrame()
+    {
+        yield return null;
+        BroadcastPlayerList();
+    }
+
+    private void BroadcastPlayerList()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsServer) return;
+
+        using var writer = new FastBufferWriter(1024, Unity.Collections.Allocator.Temp);
+        writer.WriteValueSafe(Players.Count);
+        for (int i = 0; i < Players.Count; i++)
+        {
+            var p = Players[i];
+            writer.WriteValueSafe(p.ClientId);
+            writer.WriteValueSafe(p.DisplayName);
+        }
+
+        foreach (var clientId in nm.ConnectedClientsIds)
+        {
+            if (clientId == nm.LocalClientId) continue; // Don't send to self (host)
+            nm.CustomMessagingManager.SendNamedMessage("PlayerListSync", clientId, writer);
+        }
+    }
+
+    private void OnReceivePlayerList(ulong senderId, FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out int count);
+        Players.Clear();
+        for (int i = 0; i < count; i++)
+        {
+            reader.ReadValueSafe(out ulong clientId);
+            reader.ReadValueSafe(out FixedString32Bytes displayName);
+            Players.Add(new PlayerLobbyData { ClientId = clientId, DisplayName = displayName });
+        }
+        OnLobbyUpdated?.Invoke();
     }
 
     // ──────────────────────────────────────────
@@ -157,17 +188,34 @@ public class ConnectionManager : NetworkBehaviour
             transport.SetConnectionData(ip, port);
         }
 
+        nm.NetworkConfig.ForceSamePrefabs = false;
+        nm.NetworkConfig.ConnectionApproval = true;
+
         if (!nm.StartClient())
         {
             OnConnectionFailed?.Invoke("Failed to start client.");
             return;
         }
 
-        Debug.Log($"[ConnectionManager] Connecting to {ip}:{port}...");
+        // Subscribe to events after StartClient
+        nm.OnClientConnectedCallback += OnClientConnectedAsClient;
+        nm.OnClientDisconnectCallback += OnClientDisconnectedFromHost;
 
-        // Start timeout
+        Debug.Log($"[ConnectionManager] Connecting to {ip}:{port} (transport: {nm.NetworkConfig.NetworkTransport?.GetType().Name})...");
+
         if (timeoutCoroutine != null) StopCoroutine(timeoutCoroutine);
         timeoutCoroutine = StartCoroutine(ConnectionTimeoutCoroutine());
+    }
+
+    private void OnClientConnectedAsClient(ulong clientId)
+    {
+        if (NetworkManager.Singleton == null) return;
+        if (clientId != NetworkManager.Singleton.LocalClientId) return;
+
+        Debug.Log($"[ConnectionManager] Connected to host as client {clientId}");
+
+        // Register to receive player list updates from host
+        NetworkManager.Singleton.CustomMessagingManager.RegisterNamedMessageHandler("PlayerListSync", OnReceivePlayerList);
     }
 
     private IEnumerator ConnectionTimeoutCoroutine()
@@ -184,7 +232,6 @@ public class ConnectionManager : NetworkBehaviour
             yield return null;
         }
 
-        // Timed out
         if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsConnectedClient)
         {
             NetworkManager.Singleton.Shutdown();
@@ -200,15 +247,16 @@ public class ConnectionManager : NetworkBehaviour
 
     private void OnClientDisconnect(ulong clientId)
     {
-        if (!IsServer) return;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
 
-        // Remove from player list
         for (int i = 0; i < Players.Count; i++)
         {
             if (Players[i].ClientId == clientId)
             {
                 Debug.Log($"[ConnectionManager] Client {clientId} ({Players[i].DisplayName}) disconnected");
                 Players.RemoveAt(i);
+                OnLobbyUpdated?.Invoke();
+                BroadcastPlayerList();
                 break;
             }
         }
@@ -216,7 +264,7 @@ public class ConnectionManager : NetworkBehaviour
 
     private void OnClientDisconnectedFromHost(ulong clientId)
     {
-        // This fires on clients when they get disconnected
+        if (NetworkManager.Singleton == null) return;
         if (clientId == NetworkManager.Singleton.LocalClientId)
         {
             Debug.Log("[ConnectionManager] Disconnected from host");
@@ -235,9 +283,14 @@ public class ConnectionManager : NetworkBehaviour
 
         if (NetworkManager.Singleton != null)
         {
+            // Unsubscribe before shutdown
+            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnect;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnectedFromHost;
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnectedAsClient;
             NetworkManager.Singleton.Shutdown();
         }
 
+        Players.Clear();
         ReturnToMainMenu();
     }
 
@@ -252,18 +305,21 @@ public class ConnectionManager : NetworkBehaviour
 
     public void StartMatch()
     {
-        if (!IsServer) return;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer)
+        {
+            Debug.LogWarning("[ConnectionManager] StartMatch called but we are not the server");
+            return;
+        }
 
         matchStarted = true;
         Debug.Log($"[ConnectionManager] Starting match with {Players.Count} players");
 
-        // Use NGO scene management to sync scene load to all clients
         NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += OnGameSceneLoaded;
-        NetworkManager.Singleton.SceneManager.LoadScene("SampleScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
+        NetworkManager.Singleton.SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
     }
 
-    private void OnGameSceneLoaded(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode,
-        System.Collections.Generic.List<ulong> clientsCompleted, System.Collections.Generic.List<ulong> clientsTimedOut)
+    private void OnGameSceneLoaded(string sceneName, LoadSceneMode loadSceneMode,
+        List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
     {
         NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= OnGameSceneLoaded;
 
@@ -273,14 +329,12 @@ public class ConnectionManager : NetworkBehaviour
         }
 
         Debug.Log($"[ConnectionManager] All clients loaded game scene. Spawning players...");
-
-        // Spawn player objects for all connected clients
         SpawnAllPlayers();
     }
 
     private void SpawnAllPlayers()
     {
-        if (!IsServer) return;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
 
         var spawnPoints = FindObjectsByType<PlayerSpawnPoint>(FindObjectsSortMode.None);
         var playerPrefab = NetworkManager.Singleton.NetworkConfig.PlayerPrefab;
@@ -294,7 +348,7 @@ public class ConnectionManager : NetworkBehaviour
         for (int i = 0; i < Players.Count; i++)
         {
             var playerData = Players[i];
-            Vector3 spawnPos = new Vector3(10, 1, 10); // fallback
+            Vector3 spawnPos = new Vector3(10, 1, 10);
             Quaternion spawnRot = Quaternion.identity;
 
             if (spawnPoints.Length > 0)
@@ -310,15 +364,6 @@ public class ConnectionManager : NetworkBehaviour
 
             Debug.Log($"[ConnectionManager] Spawned {playerData.DisplayName} (client {playerData.ClientId}) at {spawnPos}");
         }
-    }
-
-    // ──────────────────────────────────────────
-    // Player List Events
-    // ──────────────────────────────────────────
-
-    private void OnPlayersListChanged(NetworkListEvent<PlayerLobbyData> changeEvent)
-    {
-        OnLobbyUpdated?.Invoke();
     }
 
     // ──────────────────────────────────────────

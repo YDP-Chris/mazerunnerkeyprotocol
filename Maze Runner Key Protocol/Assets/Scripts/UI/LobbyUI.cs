@@ -127,8 +127,7 @@ public class LobbyUI : MonoBehaviour
 
     private System.Collections.IEnumerator WaitAndSubscribe()
     {
-        // Wait a frame for NetworkBehaviour to spawn
-        yield return null;
+        // Wait a frame for network to initialize
         yield return null;
         UnsubscribeFromConnectionManager();
         SubscribeToConnectionManager();
