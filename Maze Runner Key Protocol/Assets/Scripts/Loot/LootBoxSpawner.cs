@@ -84,17 +84,12 @@ public class LootBoxSpawner : NetworkBehaviour
         var rng = new System.Random(seed);
 
         // Build fallback positions (4 quadrants)
-        BuildFallbackPositions();
+        fallbackPositions = LootPlacementHelper.BuildFallbackPositions(mazeMinX, mazeMaxX, mazeMinZ, mazeMaxZ);
 
         // Calculate loot count
         int playerCount = Mathf.Max(1, NetworkManager.Singleton.ConnectedClientsIds.Count);
-        int lootCount = baseLootCount + Mathf.Max(0, playerCount - 2) * additionalLootPerPlayer;
-        lootCount = Mathf.Max(lootCount, baseLootCount);
-
-        // Max cap based on maze area
-        float mazeAreaInCells = ((mazeMaxX - mazeMinX) * (mazeMaxZ - mazeMinZ)) / 16f; // ~4x4 cell size
-        int maxCap = Mathf.Max(8, (int)(mazeAreaInCells / 15f));
-        lootCount = Mathf.Min(lootCount, maxCap);
+        float mazeAreaInCells = ((mazeMaxX - mazeMinX) * (mazeMaxZ - mazeMinZ)) / 16f;
+        int lootCount = LootPlacementHelper.CalculateLootCount(baseLootCount, additionalLootPerPlayer, playerCount, mazeAreaInCells);
 
         // Gather exclusion zones
         List<Vector3> playerSpawns = GetPlayerSpawnPositions();
@@ -181,60 +176,23 @@ public class LootBoxSpawner : NetworkBehaviour
 
     private bool IsValidPosition(Vector3 pos, List<Vector3> playerSpawns, Vector3 keyPos)
     {
-        // Check separation from other loot boxes
-        foreach (var placed in placedPositions)
-        {
-            if (Vector3.Distance(pos, placed) < minSeparation)
-                return false;
-        }
-
-        // Check distance from player spawns
-        foreach (var spawn in playerSpawns)
-        {
-            if (Vector3.Distance(pos, spawn) < minDistFromSpawns)
-                return false;
-        }
-
-        // Check distance from key
-        if (Vector3.Distance(pos, keyPos) < minDistFromKey)
+        // Distance-based checks (pure logic, testable via LootPlacementHelper)
+        if (!LootPlacementHelper.IsValidPlacement(pos, placedPositions, playerSpawns, keyPos,
+            minSeparation, minDistFromSpawns, minDistFromKey))
             return false;
 
-        // Check it's a walkable position (raycast down to find floor)
+        // Physics-based check (runtime only, not unit-testable)
         if (Physics.Raycast(pos + Vector3.up * 5f, Vector3.down, out RaycastHit hit, 10f))
         {
-            // Check not inside a wall (cast from above)
             if (hit.collider.gameObject.layer == LayerMask.NameToLayer("Wall"))
                 return false;
         }
         else
         {
-            return false; // No floor found
+            return false;
         }
 
         return true;
-    }
-
-    private void BuildFallbackPositions()
-    {
-        fallbackPositions.Clear();
-
-        float midX = (mazeMinX + mazeMaxX) / 2f;
-        float midZ = (mazeMinZ + mazeMaxZ) / 2f;
-        float qX = (mazeMaxX - mazeMinX) / 4f;
-        float qZ = (mazeMaxZ - mazeMinZ) / 4f;
-
-        // One position per quadrant
-        Vector3[] quadrants = {
-            new Vector3(midX - qX, 0.5f, midZ - qZ),
-            new Vector3(midX + qX, 0.5f, midZ - qZ),
-            new Vector3(midX - qX, 0.5f, midZ + qZ),
-            new Vector3(midX + qX, 0.5f, midZ + qZ)
-        };
-
-        foreach (var pos in quadrants)
-        {
-            fallbackPositions.Add(pos);
-        }
     }
 
     private List<Vector3> GetPlayerSpawnPositions()

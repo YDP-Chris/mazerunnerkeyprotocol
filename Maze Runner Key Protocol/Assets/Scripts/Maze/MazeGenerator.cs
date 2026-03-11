@@ -42,10 +42,10 @@ public class MazeGenerator : NetworkBehaviour
     public static event Action OnMazeReady;
     public static MazeGenerator Instance { get; private set; }
 
-    // Maze grid: true = wall present
-    private bool[,] horizontalWalls; // [gridHeight+1, gridWidth]
-    private bool[,] verticalWalls;   // [gridHeight, gridWidth+1]
-    private bool[,] visited;
+    // Maze grid (delegated to MazeGrid)
+    private MazeGrid grid;
+    private bool[,] horizontalWalls; // alias for grid.HorizontalWalls
+    private bool[,] verticalWalls;   // alias for grid.VerticalWalls
 
     private GameObject mazeParent;
     private GameObject spawnParent;
@@ -94,8 +94,11 @@ public class MazeGenerator : NetworkBehaviour
         mazeParent = new GameObject("Maze");
         spawnParent = new GameObject("SpawnPoints");
 
-        // 1. Generate logical grid
-        GenerateMazeGrid();
+        // 1. Generate logical grid (delegated to MazeGrid)
+        grid = new MazeGrid(gridWidth, gridHeight);
+        grid.Generate(rng);
+        horizontalWalls = grid.HorizontalWalls;
+        verticalWalls = grid.VerticalWalls;
 
         // 2. Create open areas
         CreateOpenAreas();
@@ -136,90 +139,6 @@ public class MazeGenerator : NetworkBehaviour
     }
 
     #region Maze Algorithm
-
-    private void GenerateMazeGrid()
-    {
-        // Initialize all walls as present
-        horizontalWalls = new bool[gridHeight + 1, gridWidth];
-        verticalWalls = new bool[gridHeight, gridWidth + 1];
-        visited = new bool[gridHeight, gridWidth];
-
-        for (int r = 0; r <= gridHeight; r++)
-            for (int c = 0; c < gridWidth; c++)
-                horizontalWalls[r, c] = true;
-
-        for (int r = 0; r < gridHeight; r++)
-            for (int c = 0; c <= gridWidth; c++)
-                verticalWalls[r, c] = true;
-
-        // Iterative stack-based Recursive Backtracker
-        var stack = new Stack<Vector2Int>();
-        var start = new Vector2Int(0, 0);
-        visited[0, 0] = true;
-        stack.Push(start);
-
-        while (stack.Count > 0)
-        {
-            var current = stack.Peek();
-            var neighbors = GetUnvisitedNeighbors(current);
-
-            if (neighbors.Count > 0)
-            {
-                var next = neighbors[0];
-                RemoveWallBetween(current, next);
-                visited[next.x, next.y] = true;
-                stack.Push(next);
-            }
-            else
-            {
-                stack.Pop();
-            }
-        }
-    }
-
-    private List<Vector2Int> GetUnvisitedNeighbors(Vector2Int cell)
-    {
-        var neighbors = new List<Vector2Int>();
-        var dirs = new Vector2Int[] {
-            new Vector2Int(-1, 0), new Vector2Int(1, 0),
-            new Vector2Int(0, -1), new Vector2Int(0, 1)
-        };
-
-        foreach (var d in dirs)
-        {
-            int nr = cell.x + d.x;
-            int nc = cell.y + d.y;
-            if (nr >= 0 && nr < gridHeight && nc >= 0 && nc < gridWidth && !visited[nr, nc])
-                neighbors.Add(new Vector2Int(nr, nc));
-        }
-
-        // Fisher-Yates shuffle with seeded RNG
-        for (int i = neighbors.Count - 1; i > 0; i--)
-        {
-            int j = rng.Next(i + 1);
-            var tmp = neighbors[i];
-            neighbors[i] = neighbors[j];
-            neighbors[j] = tmp;
-        }
-
-        return neighbors;
-    }
-
-    private void RemoveWallBetween(Vector2Int a, Vector2Int b)
-    {
-        if (a.x == b.x)
-        {
-            // Same row, different col — vertical wall
-            int col = Mathf.Max(a.y, b.y);
-            verticalWalls[a.x, col] = false;
-        }
-        else
-        {
-            // Same col, different row — horizontal wall
-            int row = Mathf.Max(a.x, b.x);
-            horizontalWalls[row, a.y] = false;
-        }
-    }
 
     private void CreateOpenAreas()
     {
