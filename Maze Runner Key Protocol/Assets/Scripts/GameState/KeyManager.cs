@@ -10,10 +10,11 @@ public class KeyManager : NetworkBehaviour
     [Header("Placement Settings")]
     [SerializeField] private float minDistanceFromSpawnsAndExit = 20f;
     [SerializeField] private int maxPlacementAttempts = 50;
-    [SerializeField] private float mazeMinX = 0f;
-    [SerializeField] private float mazeMaxX = 80f;
-    [SerializeField] private float mazeMinZ = 0f;
-    [SerializeField] private float mazeMaxZ = 80f;
+
+    private float mazeMinX;
+    private float mazeMaxX;
+    private float mazeMinZ;
+    private float mazeMaxZ;
 
     [Header("Prefab")]
     [SerializeField] private GameObject keyPrefab;
@@ -40,14 +41,35 @@ public class KeyManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        if (IsServer)
-        {
-            PlaceKey();
-            SpawnKeyObject();
-        }
-
         KeyWorldPosition.OnValueChanged += OnKeyPositionChanged;
         CurrentKeyState.OnValueChanged += OnKeyStateChanged;
+
+        if (IsServer)
+        {
+            // Wait for MazeGenerator to signal ready
+            if (MazeGenerator.IsReady)
+            {
+                OnMazeReady();
+            }
+            else
+            {
+                MazeGenerator.OnMazeReady += OnMazeReady;
+            }
+        }
+    }
+
+    private void OnMazeReady()
+    {
+        MazeGenerator.OnMazeReady -= OnMazeReady;
+
+        // Read bounds from MazeGenerator
+        mazeMinX = MazeGenerator.MinX;
+        mazeMaxX = MazeGenerator.MaxX;
+        mazeMinZ = MazeGenerator.MinZ;
+        mazeMaxZ = MazeGenerator.MaxZ;
+
+        PlaceKey();
+        SpawnKeyObject();
     }
 
     private void SpawnKeyObject()
@@ -68,6 +90,7 @@ public class KeyManager : NetworkBehaviour
     {
         KeyWorldPosition.OnValueChanged -= OnKeyPositionChanged;
         CurrentKeyState.OnValueChanged -= OnKeyStateChanged;
+        MazeGenerator.OnMazeReady -= OnMazeReady;
 
         if (Instance == this) Instance = null;
     }
@@ -83,7 +106,9 @@ public class KeyManager : NetworkBehaviour
         var spawnPoints = FindObjectsByType<PlayerSpawnPoint>(FindObjectsSortMode.None);
         var exitPoints = FindObjectsByType<ExitSpawnPoint>(FindObjectsSortMode.None);
 
-        Vector3 bestPosition = new Vector3(40f, 0.5f, 40f); // center fallback
+        float centerX = (mazeMinX + mazeMaxX) / 2f;
+        float centerZ = (mazeMinZ + mazeMaxZ) / 2f;
+        Vector3 bestPosition = new Vector3(centerX, 0.5f, centerZ); // center fallback
         float bestMinDist = 0f;
 
         for (int attempt = 0; attempt < maxPlacementAttempts; attempt++)

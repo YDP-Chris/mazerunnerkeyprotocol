@@ -27,13 +27,10 @@ public class LootBoxSpawner : NetworkBehaviour
     [SerializeField] private float minDistFromKey = 8f; // 2 tiles
     [SerializeField] private int maxAttempts = 50;
 
-    [Header("Maze Bounds")]
-    [SerializeField] private float mazeMinX = 2f;
-    [SerializeField] private float mazeMaxX = 78f;
-    [SerializeField] private float mazeMinZ = 2f;
-    [SerializeField] private float mazeMaxZ = 78f;
-    [SerializeField] private int mazeWidth = 20;
-    [SerializeField] private int mazeHeight = 20;
+    private float mazeMinX;
+    private float mazeMaxX;
+    private float mazeMinZ;
+    private float mazeMaxZ;
 
     private List<Vector3> placedPositions = new List<Vector3>();
     private List<Vector3> fallbackPositions = new List<Vector3>();
@@ -42,13 +39,39 @@ public class LootBoxSpawner : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        // Delay to ensure maze, spawns, key, and exit are all placed
+        // Wait for MazeGenerator to signal ready
+        if (MazeGenerator.IsReady)
+        {
+            OnMazeReady();
+        }
+        else
+        {
+            MazeGenerator.OnMazeReady += OnMazeReady;
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        MazeGenerator.OnMazeReady -= OnMazeReady;
+    }
+
+    private void OnMazeReady()
+    {
+        MazeGenerator.OnMazeReady -= OnMazeReady;
+
+        // Read bounds from MazeGenerator
+        mazeMinX = MazeGenerator.MinX;
+        mazeMaxX = MazeGenerator.MaxX;
+        mazeMinZ = MazeGenerator.MinZ;
+        mazeMaxZ = MazeGenerator.MaxZ;
+
+        // Delay slightly for key placement to complete first
         StartCoroutine(SpawnAfterDelay());
     }
 
     private System.Collections.IEnumerator SpawnAfterDelay()
     {
-        yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(0.5f);
         SpawnLootBoxes();
     }
 
@@ -68,15 +91,18 @@ public class LootBoxSpawner : NetworkBehaviour
         int lootCount = baseLootCount + Mathf.Max(0, playerCount - 2) * additionalLootPerPlayer;
         lootCount = Mathf.Max(lootCount, baseLootCount);
 
-        // Max cap
-        int maxCap = (mazeWidth * mazeHeight) / 15;
+        // Max cap based on maze area
+        float mazeAreaInCells = ((mazeMaxX - mazeMinX) * (mazeMaxZ - mazeMinZ)) / 16f; // ~4x4 cell size
+        int maxCap = Mathf.Max(8, (int)(mazeAreaInCells / 15f));
         lootCount = Mathf.Min(lootCount, maxCap);
 
         // Gather exclusion zones
         List<Vector3> playerSpawns = GetPlayerSpawnPositions();
+        float centerX = (mazeMinX + mazeMaxX) / 2f;
+        float centerZ = (mazeMinZ + mazeMaxZ) / 2f;
         Vector3 keyPos = KeyManager.Instance != null
             ? KeyManager.Instance.KeyWorldPosition.Value
-            : new Vector3(40f, 0f, 40f);
+            : new Vector3(centerX, 0f, centerZ);
 
         int fallbackIndex = 0;
 

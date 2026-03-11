@@ -38,17 +38,31 @@ public class ExitGateway : NetworkBehaviour
         IsUnlocked.OnValueChanged += OnUnlockStateChanged;
         EscapeProgress.OnValueChanged += OnProgressChanged;
 
-        // Subscribe to key pickup to unlock
+        // Subscribe to key pickup to unlock — may need to wait for maze ready
         if (KeyManager.Instance != null)
+        {
             KeyManager.Instance.OnKeyPickedUp += OnKeyPickedUp;
+        }
+        else if (!MazeGenerator.IsReady)
+        {
+            MazeGenerator.OnMazeReady += OnMazeReadySubscribeKey;
+        }
 
         UpdateVisuals(IsUnlocked.Value);
+    }
+
+    private void OnMazeReadySubscribeKey()
+    {
+        MazeGenerator.OnMazeReady -= OnMazeReadySubscribeKey;
+        if (KeyManager.Instance != null)
+            KeyManager.Instance.OnKeyPickedUp += OnKeyPickedUp;
     }
 
     public override void OnNetworkDespawn()
     {
         IsUnlocked.OnValueChanged -= OnUnlockStateChanged;
         EscapeProgress.OnValueChanged -= OnProgressChanged;
+        MazeGenerator.OnMazeReady -= OnMazeReadySubscribeKey;
 
         if (KeyManager.Instance != null)
             KeyManager.Instance.OnKeyPickedUp -= OnKeyPickedUp;

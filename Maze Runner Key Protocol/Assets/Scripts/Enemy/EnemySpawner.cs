@@ -21,11 +21,10 @@ public class EnemySpawner : NetworkBehaviour
     [SerializeField] private int waypointsPerRoute = 6;
     [SerializeField] private float waypointSpacing = 8f;
 
-    [Header("Maze Bounds")]
-    [SerializeField] private float mazeMinX = 2f;
-    [SerializeField] private float mazeMaxX = 78f;
-    [SerializeField] private float mazeMinZ = 2f;
-    [SerializeField] private float mazeMaxZ = 78f;
+    private float mazeMinX;
+    private float mazeMaxX;
+    private float mazeMinZ;
+    private float mazeMaxZ;
 
     private List<Vector3> allWaypoints = new List<Vector3>();
     private List<Vector3> usedSpawnPositions = new List<Vector3>();
@@ -34,13 +33,39 @@ public class EnemySpawner : NetworkBehaviour
     {
         if (!IsServer) return;
 
-        // Delay spawn slightly to ensure NavMesh is baked
+        // Wait for MazeGenerator to signal ready
+        if (MazeGenerator.IsReady)
+        {
+            OnMazeReady();
+        }
+        else
+        {
+            MazeGenerator.OnMazeReady += OnMazeReady;
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        MazeGenerator.OnMazeReady -= OnMazeReady;
+    }
+
+    private void OnMazeReady()
+    {
+        MazeGenerator.OnMazeReady -= OnMazeReady;
+
+        // Read bounds from MazeGenerator
+        mazeMinX = MazeGenerator.MinX;
+        mazeMaxX = MazeGenerator.MaxX;
+        mazeMinZ = MazeGenerator.MinZ;
+        mazeMaxZ = MazeGenerator.MaxZ;
+
         StartCoroutine(SpawnAfterDelay());
     }
 
     private System.Collections.IEnumerator SpawnAfterDelay()
     {
-        yield return new WaitForSeconds(0.5f);
+        // Brief delay for NavMesh queries to stabilize
+        yield return new WaitForEndOfFrame();
 
         // Validate NavMesh
         if (!ValidateNavMesh())
@@ -58,11 +83,13 @@ public class EnemySpawner : NetworkBehaviour
 
     private bool ValidateNavMesh()
     {
-        // Spot-check a few positions
+        // Spot-check positions using dynamic maze bounds
+        float midX = (mazeMinX + mazeMaxX) / 2f;
+        float midZ = (mazeMinZ + mazeMaxZ) / 2f;
         Vector3[] testPositions = {
-            new Vector3(10, 0, 10),
-            new Vector3(40, 0, 40),
-            new Vector3(70, 0, 70)
+            new Vector3(mazeMinX + 2f, 0, mazeMinZ + 2f),
+            new Vector3(midX, 0, midZ),
+            new Vector3(mazeMaxX - 2f, 0, mazeMaxZ - 2f)
         };
 
         int valid = 0;
@@ -146,9 +173,11 @@ public class EnemySpawner : NetworkBehaviour
         if (guardPrefab == null) return;
 
         // Place guards near key spawn
+        float centerX = (mazeMinX + mazeMaxX) / 2f;
+        float centerZ = (mazeMinZ + mazeMaxZ) / 2f;
         Vector3 keyPos = KeyManager.Instance != null
             ? KeyManager.Instance.KeyWorldPosition.Value
-            : new Vector3(40f, 0f, 40f);
+            : new Vector3(centerX, 0f, centerZ);
 
         for (int i = 0; i < guardCount; i++)
         {
