@@ -62,7 +62,7 @@ public class PlayerCameraController : NetworkBehaviour
 
     private void LateUpdate()
     {
-        if (!IsOwner || isEliminated) return;
+        if (!IsOwner || isEliminated || inputActions == null) return;
 
         Vector2 lookInput = inputActions.Player.Look.ReadValue<Vector2>();
 

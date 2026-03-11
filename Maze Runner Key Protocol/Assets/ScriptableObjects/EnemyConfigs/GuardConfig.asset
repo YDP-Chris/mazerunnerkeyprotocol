@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b1f8cbaa73acde4f99f8ad54994e30c, type: 3}
+  m_Name: GuardConfig
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyConfig
+  health: 60
+  patrolSpeed: 0
+  alertSpeed: 3
+  chaseSpeed: 4
+  attackSpeed: 1
+  attackRange: 3
+  attackDamage: 12
+  attackInterval: 1.2
+  sightRange: 15
+  sightAngle: 120
+  soundDetectionRadius: 25
+  searchDuration: 12
+  memoryDuration: 5
+  waypointArrivalThreshold: 0.5
+  patrolBehavior: 1

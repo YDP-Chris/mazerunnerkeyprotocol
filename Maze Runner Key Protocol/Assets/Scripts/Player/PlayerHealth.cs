@@ -52,7 +52,18 @@ public class PlayerHealth : NetworkBehaviour
         {
             IsEliminated = true;
             OnDied?.Invoke();
+
+            // Notify match manager of elimination
+            if (MatchManager.Instance != null)
+                MatchManager.Instance.OnPlayerEliminated(OwnerClientId);
+
             StartCoroutine(DeactivateAfterDelay(0.5f));
+        }
+        else
+        {
+            // Notify exit gateway if key holder takes damage (escape interruption)
+            if (ExitGateway.Instance != null)
+                ExitGateway.Instance.OnKeyHolderDamaged(OwnerClientId);
         }
     }
 

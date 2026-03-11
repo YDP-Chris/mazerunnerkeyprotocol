@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b1f8cbaa73acde4f99f8ad54994e30c, type: 3}
+  m_Name: GruntConfig
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyConfig
+  health: 30
+  patrolSpeed: 2
+  alertSpeed: 3.5
+  chaseSpeed: 4.5
+  attackSpeed: 1
+  attackRange: 2.5
+  attackDamage: 8
+  attackInterval: 1.5
+  sightRange: 12
+  sightAngle: 90
+  soundDetectionRadius: 20
+  searchDuration: 10
+  memoryDuration: 5
+  waypointArrivalThreshold: 0.5
+  patrolBehavior: 0

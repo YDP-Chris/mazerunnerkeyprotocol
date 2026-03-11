@@ -20,6 +20,9 @@ public class PlayerMovement : NetworkBehaviour
     private float verticalVelocity;
     private Vector3 lastFacingDirection = Vector3.forward;
     private bool isEliminated;
+    private float footstepTimer;
+    private const float FOOTSTEP_INTERVAL = 0.5f;
+    private const float FOOTSTEP_RADIUS = 5f;
 
     public override void OnNetworkSpawn()
     {
@@ -53,7 +56,7 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsOwner || isEliminated) return;
+        if (!IsOwner || isEliminated || inputActions == null || cameraTransform == null) return;
 
         Vector2 moveInput = inputActions.Player.Move.ReadValue<Vector2>();
         bool sprintPressed = inputActions.Player.Sprint.IsPressed();
@@ -103,6 +106,17 @@ public class PlayerMovement : NetworkBehaviour
             CurrentState = isSprinting ? MovementState.Sprinting : MovementState.Moving;
         else
             CurrentState = MovementState.Idle;
+
+        // Broadcast footstep sounds for enemy AI (host-side)
+        if (IsServer && moveDirection.sqrMagnitude > 0.01f)
+        {
+            footstepTimer += Time.deltaTime;
+            if (footstepTimer >= FOOTSTEP_INTERVAL)
+            {
+                footstepTimer = 0f;
+                SoundEventSystem.BroadcastSound(transform.position, FOOTSTEP_RADIUS, SoundType.Footstep);
+            }
+        }
     }
 
     private void OnDied()

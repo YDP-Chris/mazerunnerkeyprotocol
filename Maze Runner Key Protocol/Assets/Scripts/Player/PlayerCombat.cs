@@ -52,7 +52,7 @@ public class PlayerCombat : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsOwner || isEliminated) return;
+        if (!IsOwner || isEliminated || inputActions == null) return;
 
         if (inputActions.Player.Fire.WasPressedThisFrame() && Time.time >= nextFireTime)
         {
@@ -71,6 +71,10 @@ public class PlayerCombat : NetworkBehaviour
         if (audioSource != null && fireSound != null)
             audioSource.PlayOneShot(fireSound);
 
+        // Broadcast gunshot sound for enemy AI
+        if (IsServer)
+            SoundEventSystem.BroadcastSound(transform.position, 20f, SoundType.Gunshot);
+
         // Hitscan from camera center
         Camera cam = Camera.main;
         if (cam == null) return;
@@ -82,14 +86,15 @@ public class PlayerCombat : NetworkBehaviour
             // Check if we hit a damageable target
             if (((1 << hit.collider.gameObject.layer) & damageableMask) != 0)
             {
-                var targetHealth = hit.collider.GetComponentInParent<PlayerHealth>();
-                if (targetHealth != null)
+                var targetNetObj = hit.collider.GetComponentInParent<NetworkObject>();
+                if (targetNetObj != null)
                 {
-                    var targetNetObj = targetHealth.GetComponent<NetworkObject>();
-                    if (targetNetObj != null)
-                    {
+                    // Check for player or enemy health
+                    bool hasDamageable = targetNetObj.GetComponent<PlayerHealth>() != null
+                        || targetNetObj.GetComponent<EnemyHealth>() != null;
+
+                    if (hasDamageable)
                         DealDamageServerRpc(targetNetObj.NetworkObjectId, damage);
-                    }
                 }
 
                 // Hit impact on damageable
@@ -110,9 +115,16 @@ public class PlayerCombat : NetworkBehaviour
     {
         if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetworkObjectId, out var targetObj))
         {
-            var health = targetObj.GetComponent<PlayerHealth>();
-            if (health != null)
-                health.TakeDamage(dmg);
+            var playerHealth = targetObj.GetComponent<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                playerHealth.TakeDamage(dmg);
+                return;
+            }
+
+            var enemyHealth = targetObj.GetComponent<EnemyHealth>();
+            if (enemyHealth != null)
+                enemyHealth.TakeDamage(dmg);
         }
     }
 
